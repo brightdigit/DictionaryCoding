@@ -1,0 +1,173 @@
+name: DictionaryCoding
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+    paths-ignore:
+      - '**.md'
+      - 'Docs/**'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
+  pull_request:
+    branches:
+      - main
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+    paths-ignore:
+      - '**.md'
+      - 'Docs/**'
+      - 'LICENSE'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  PACKAGE_NAME: DictionaryCoding
+
+jobs:
+  configure:
+    name: Configure Build Matrix
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' || !contains(github.event.head_commit.message, 'ci skip') }}
+    outputs:
+      full-matrix: ${{ steps.set-matrix.outputs.full-matrix }}
+      ubuntu-os: ${{ steps.set-matrix.outputs.ubuntu-os }}
+    steps:
+      - name: Determine build matrix
+        id: set-matrix
+        run: |
+          # DictionaryCoding's Package.swift declares swift-tools-version 6.3, so every leg
+          # must use a Swift 6.3 toolchain — older toolchains cannot parse the manifest.
+          if [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "full-matrix=true" >> "$GITHUB_OUTPUT"
+            echo 'ubuntu-os=["noble","jammy"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "full-matrix=false" >> "$GITHUB_OUTPUT"
+            echo 'ubuntu-os=["noble"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  build-ubuntu:
+    name: Build on Ubuntu
+    needs: [configure]
+    runs-on: ubuntu-latest
+    container: swift:6.3-${{ matrix.os }}
+    strategy:
+      matrix:
+        os: ${{ fromJSON(needs.configure.outputs.ubuntu-os) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: brightdigit/swift-build@v1
+        id: build
+      - name: Install curl
+        if: steps.build.outputs.contains-code-coverage == 'true'
+        run: |
+          apt-get update -q
+          apt-get install -y curl
+      - uses: sersoft-gmbh/swift-coverage-action@v5
+        id: coverage-files
+        if: steps.build.outputs.contains-code-coverage == 'true'
+        with:
+          fail-on-empty-output: true
+      - name: Upload coverage to Codecov
+        if: steps.build.outputs.contains-code-coverage == 'true'
+        uses: codecov/codecov-action@v6
+        with:
+          fail_ci_if_error: true
+          flags: swift-6.3,ubuntu
+          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ join(fromJSON(steps.coverage-files.outputs.files), ',') }}
+
+  build-macos:
+    name: Build on macOS
+    needs: [configure]
+    runs-on: macos-26
+    if: ${{ !cancelled() && needs.configure.result == 'success' }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and Test
+        id: build
+        uses: brightdigit/swift-build@v1
+        with:
+          scheme: ${{ env.PACKAGE_NAME }}-Package
+          xcode: "/Applications/Xcode_26.4.app"
+      - name: Process Coverage
+        if: steps.build.outputs.contains-code-coverage == 'true'
+        uses: sersoft-gmbh/swift-coverage-action@v5
+      - name: Upload Coverage
+        if: steps.build.outputs.contains-code-coverage == 'true'
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: spm
+
+  build-macos-full:
+    name: Build on macOS (Full)
+    needs: [configure]
+    if: ${{ !cancelled() && needs.configure.result == 'success' && needs.configure.outputs.full-matrix == 'true' }}
+    runs-on: macos-26
+    strategy:
+      matrix:
+        include:
+          - type: macos
+            xcode: "/Applications/Xcode_26.4.app"
+          - type: ios
+            xcode: "/Applications/Xcode_26.4.app"
+            deviceName: "iPhone 17 Pro"
+            osVersion: "26.4"
+            download-platform: true
+          - type: watchos
+            xcode: "/Applications/Xcode_26.4.app"
+            deviceName: "Apple Watch Ultra 3 (49mm)"
+            osVersion: "26.4"
+            download-platform: true
+          - type: tvos
+            xcode: "/Applications/Xcode_26.4.app"
+            deviceName: "Apple TV"
+            osVersion: "26.4"
+            download-platform: true
+          - type: visionos
+            xcode: "/Applications/Xcode_26.4.app"
+            deviceName: "Apple Vision Pro"
+            osVersion: "26.4"
+            download-platform: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and Test
+        id: build
+        uses: brightdigit/swift-build@v1
+        with:
+          scheme: ${{ env.PACKAGE_NAME }}-Package
+          type: ${{ matrix.type }}
+          xcode: ${{ matrix.xcode }}
+          deviceName: ${{ matrix.deviceName }}
+          osVersion: ${{ matrix.osVersion }}
+          download-platform: ${{ matrix.download-platform }}
+      - name: Process Coverage
+        if: steps.build.outputs.contains-code-coverage == 'true'
+        uses: sersoft-gmbh/swift-coverage-action@v5
+      - name: Upload Coverage
+        if: steps.build.outputs.contains-code-coverage == 'true'
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: ${{ matrix.type && format('{0}{1}', matrix.type, matrix.osVersion) || 'spm' }}
+
+  lint:
+    name: Linting
+    # build-macos-full is skipped on feature branches; !failure() lets this job proceed
+    # past skipped (not failed) dependencies.
+    if: ${{ !cancelled() && !failure() && (github.event_name == 'pull_request' || !contains(github.event.head_commit.message, 'ci skip')) }}
+    runs-on: ubuntu-latest
+    needs: [build-ubuntu, build-macos, build-macos-full]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: jdx/mise-action@v4
+        with:
+          cache: true
+      - name: Lint
+        run: ./Scripts/lint.sh
+        env:
+          LINT_MODE: STRICT
