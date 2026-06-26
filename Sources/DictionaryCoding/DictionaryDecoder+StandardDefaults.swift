@@ -1,5 +1,5 @@
 //
-//  DictionaryCodingTestKey.swift
+//  DictionaryDecoder+StandardDefaults.swift
 //  DictionaryCoding
 //
 //  Created by Leo Dion.
@@ -27,18 +27,34 @@
 //  OTHER DEALINGS IN THE SOFTWARE.
 //
 
-/// A simple CodingKey used by custom key strategy tests.
-internal struct DictionaryCodingTestKey: CodingKey {
-  internal var stringValue: String
-  internal var intValue: Int?
+import Foundation
 
-  internal init(stringValue: String) {
-    self.stringValue = stringValue
-    self.intValue = nil
+extension DictionaryDecoder {
+  private static var standardDefaults: [String: Any] {
+    [
+      "Int": 0,
+      "Int8": Int8(0),
+      "Int16": Int16(0),
+      "Int32": Int32(0),
+      "Int64": Int64(0),
+      "UInt": UInt(0),
+      "UInt8": UInt8(0),
+      "UInt16": UInt16(0),
+      "UInt32": UInt32(0),
+      "UInt64": UInt64(0),
+      "Float": Float(0.0),
+      "Double": 0.0,
+      "String": "",
+      "Bool": false,
+      "Date": Date(timeIntervalSinceReferenceDate: 0),
+      "Data": Data(),
+    ]
   }
 
-  internal init?(intValue: Int) {
-    self.stringValue = "\(intValue)"
-    self.intValue = intValue
+  internal var resolvedMissingValueStrategy: MissingValueDecodingStrategy {
+    guard case .useStandardDefault = missingValueDecodingStrategy else {
+      return missingValueDecodingStrategy
+    }
+    return .useDefault(defaults: Self.standardDefaults)
   }
 }

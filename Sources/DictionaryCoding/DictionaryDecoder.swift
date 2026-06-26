@@ -1,9 +1,30 @@
 //
 //  DictionaryDecoder.swift
-//  AtLeast
+//  DictionaryCoding
 //
-//  Copyright (c) 2026 BrightDigit.
-//  All rights reserved.
+//  Created by Leo Dion.
+//  Copyright © 2026 BrightDigit.
+//
+//  Permission is hereby granted, free of charge, to any person
+//  obtaining a copy of this software and associated documentation
+//  files (the "Software"), to deal in the Software without
+//  restriction, including without limitation the rights to use,
+//  copy, modify, merge, publish, distribute, sublicense, and/or
+//  sell copies of the Software, and to permit persons to whom the
+//  Software is furnished to do so, subject to the following
+//  conditions:
+//
+//  The above copyright notice and this permission notice shall be
+//  included in all copies or substantial portions of the Software.
+//
+//  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+//  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+//  OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+//  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+//  HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+//  WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+//  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+//  OTHER DEALINGS IN THE SOFTWARE.
 //
 
 import Foundation
@@ -143,98 +164,13 @@ open class DictionaryDecoder {
 
   /// Initializes `self` with default strategies.
   public init() {}
-
-  // MARK: - Instance Methods
-
-  /// Decodes a top-level value of the given type from the given
-  /// Dictionary representation.
-  ///
-  /// - parameter type: The type of the value to decode.
-  /// - parameter dictionary: The data to decode from.
-  /// - returns: A value of the requested type.
-  /// - throws: `DecodingError.dataCorrupted` if values requested from the payload
-  ///   are corrupted, or if the given data is not valid Dictionary.
-  /// - throws: An error if any value throws an error during decoding.
-  open func decode<T: Decodable>(
-    _ type: T.Type,
-    from dictionary: NSDictionary
-  ) throws -> T {
-    let decoder = DictionaryDecoderImpl(referencing: dictionary, options: self.options)
-    guard let value = try decoder.unbox(dictionary, as: type) else {
-      throw DecodingError.valueNotFound(
-        type,
-        DecodingError.Context(
-          codingPath: [],
-          debugDescription: "The given data did not contain a top-level value."
-        )
-      )
-    }
-
-    return value
-  }
-
-  /// Decodes a top-level value of the given type from the given
-  /// Dictionary representation.
-  ///
-  /// - parameter type: The type of the value to decode.
-  /// - parameter dictionary: The data to decode from.
-  /// - returns: A value of the requested type.
-  /// - throws: `DecodingError.dataCorrupted` if values requested from the payload
-  ///   are corrupted, or if the given data is not valid Dictionary.
-  /// - throws: An error if any value throws an error during decoding.
-  open func decode<T: Decodable>(
-    _ type: T.Type,
-    from dictionary: [String: Any]
-  ) throws -> T {
-    let decoder = DictionaryDecoderImpl(referencing: dictionary, options: self.options)
-    guard let value = try decoder.unbox(dictionary, as: type) else {
-      throw DecodingError.valueNotFound(
-        type,
-        DecodingError.Context(
-          codingPath: [],
-          debugDescription: "The given data did not contain a top-level value."
-        )
-      )
-    }
-
-    return value
-  }
-}
-
-extension DictionaryDecoder {
-  private static var standardDefaults: [String: Any] {
-    [
-      "Int": 0,
-      "Int8": Int8(0),
-      "Int16": Int16(0),
-      "Int32": Int32(0),
-      "Int64": Int64(0),
-      "UInt": UInt(0),
-      "UInt8": UInt8(0),
-      "UInt16": UInt16(0),
-      "UInt32": UInt32(0),
-      "UInt64": UInt64(0),
-      "Float": Float(0.0),
-      "Double": 0.0,
-      "String": "",
-      "Bool": false,
-      "Date": Date(timeIntervalSinceReferenceDate: 0),
-      "Data": Data(),
-    ]
-  }
-
-  private var resolvedMissingValueStrategy: MissingValueDecodingStrategy {
-    guard case .useStandardDefault = missingValueDecodingStrategy else {
-      return missingValueDecodingStrategy
-    }
-    return .useDefault(defaults: Self.standardDefaults)
-  }
 }
 
 #if canImport(Combine)
   import Combine
 
   extension DictionaryDecoder: TopLevelDecoder {
+    /// The type this decoder accepts when decoding a value.
     public typealias Input = [String: Any]
   }
 #endif

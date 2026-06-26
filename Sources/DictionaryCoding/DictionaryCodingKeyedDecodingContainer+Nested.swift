@@ -1,5 +1,5 @@
 //
-//  DictionaryUnkeyedDecodingContainer+Nested.swift
+//  DictionaryCodingKeyedDecodingContainer+Nested.swift
 //  DictionaryCoding
 //
 //  Created by Leo Dion.
@@ -29,33 +29,23 @@
 
 import Foundation
 
-// MARK: - Nested container methods
-extension DictionaryUnkeyedDecodingContainer {
-  internal mutating func nestedContainer<NestedKey>(
-    keyedBy type: NestedKey.Type
+// MARK: - Nested containers and superDecoder
+extension DictionaryCodingKeyedDecodingContainer {
+  internal func nestedContainer<NestedKey>(
+    keyedBy type: NestedKey.Type,
+    forKey key: Key
   ) throws -> KeyedDecodingContainer<NestedKey> {
-    self.decoder.codingPath.append(DictionaryCodingKey(index: self.currentIndex))
+    self.decoder.codingPath.append(key)
     defer { self.decoder.codingPath.removeLast() }
 
-    guard !self.isAtEnd else {
-      throw DecodingError.valueNotFound(
-        KeyedDecodingContainer<NestedKey>.self,
+    guard let value = self.container[key.stringValue] else {
+      throw DecodingError.keyNotFound(
+        key,
         DecodingError.Context(
           codingPath: self.codingPath,
           debugDescription:
-            "Cannot get nested keyed container -- unkeyed container is at end."
-        )
-      )
-    }
-
-    let value = self.container[self.currentIndex]
-    guard !(value is NSNull) else {
-      throw DecodingError.valueNotFound(
-        KeyedDecodingContainer<NestedKey>.self,
-        DecodingError.Context(
-          codingPath: self.codingPath,
-          debugDescription:
-            "Cannot get keyed decoding container -- found null value instead."
+            "Cannot get \(KeyedDecodingContainer<NestedKey>.self)"
+            + " -- no value found for key \(errorDescription(of: key))"
         )
       )
     }
@@ -66,36 +56,26 @@ extension DictionaryUnkeyedDecodingContainer {
       )
     }
 
-    self.currentIndex += 1
     let container = DictionaryCodingKeyedDecodingContainer<NestedKey>(
       referencing: self.decoder, wrapping: dictionary
     )
     return KeyedDecodingContainer(container)
   }
 
-  internal mutating func nestedUnkeyedContainer() throws -> UnkeyedDecodingContainer {
-    self.decoder.codingPath.append(DictionaryCodingKey(index: self.currentIndex))
+  internal func nestedUnkeyedContainer(
+    forKey key: Key
+  ) throws -> UnkeyedDecodingContainer {
+    self.decoder.codingPath.append(key)
     defer { self.decoder.codingPath.removeLast() }
 
-    guard !self.isAtEnd else {
-      throw DecodingError.valueNotFound(
-        UnkeyedDecodingContainer.self,
+    guard let value = self.container[key.stringValue] else {
+      throw DecodingError.keyNotFound(
+        key,
         DecodingError.Context(
           codingPath: self.codingPath,
           debugDescription:
-            "Cannot get nested keyed container -- unkeyed container is at end."
-        )
-      )
-    }
-
-    let value = self.container[self.currentIndex]
-    guard !(value is NSNull) else {
-      throw DecodingError.valueNotFound(
-        UnkeyedDecodingContainer.self,
-        DecodingError.Context(
-          codingPath: self.codingPath,
-          debugDescription:
-            "Cannot get keyed decoding container -- found null value instead."
+            "Cannot get UnkeyedDecodingContainer"
+            + " -- no value found for key \(errorDescription(of: key))"
         )
       )
     }
@@ -106,29 +86,24 @@ extension DictionaryUnkeyedDecodingContainer {
       )
     }
 
-    self.currentIndex += 1
     return DictionaryUnkeyedDecodingContainer(
       referencing: self.decoder, wrapping: array
     )
   }
 
-  internal mutating func superDecoder() throws -> Decoder {
-    self.decoder.codingPath.append(DictionaryCodingKey(index: self.currentIndex))
+  internal func superDecoder() throws -> Decoder {
+    try makeSuperDecoder(forKey: DictionaryCodingKey.super)
+  }
+
+  internal func superDecoder(forKey key: Key) throws -> Decoder {
+    try makeSuperDecoder(forKey: key)
+  }
+
+  private func makeSuperDecoder(forKey key: CodingKey) throws -> Decoder {
+    self.decoder.codingPath.append(key)
     defer { self.decoder.codingPath.removeLast() }
 
-    guard !self.isAtEnd else {
-      throw DecodingError.valueNotFound(
-        Decoder.self,
-        DecodingError.Context(
-          codingPath: self.codingPath,
-          debugDescription:
-            "Cannot get superDecoder() -- unkeyed container is at end."
-        )
-      )
-    }
-
-    let value = self.container[self.currentIndex]
-    self.currentIndex += 1
+    let value: Any = self.container[key.stringValue] ?? NSNull()
     return DictionaryDecoderImpl(
       referencing: value,
       at: self.decoder.codingPath,
