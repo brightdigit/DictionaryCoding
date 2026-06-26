@@ -1,0 +1,265 @@
+name: DictionaryCoding
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+    paths-ignore:
+      - '**.md'
+      - 'Docs/**'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
+  pull_request:
+    branches:
+      - main
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+    paths-ignore:
+      - '**.md'
+      - 'Docs/**'
+      - 'LICENSE'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  PACKAGE_NAME: DictionaryCoding
+
+jobs:
+  configure:
+    name: Configure Build Matrix
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' || !contains(github.event.head_commit.message, 'ci skip') }}
+    outputs:
+      full-matrix: ${{ steps.set-matrix.outputs.full-matrix }}
+      ubuntu-os: ${{ steps.set-matrix.outputs.ubuntu-os }}
+      ubuntu-swift: ${{ steps.set-matrix.outputs.ubuntu-swift }}
+      ubuntu-type: ${{ steps.set-matrix.outputs.ubuntu-type }}
+    steps:
+      - name: Determine build matrix
+        id: set-matrix
+        run: |
+          # DictionaryCoding's Package.swift declares swift-tools-version 6.3, so every leg
+          # must use a Swift 6.3-or-newer toolchain — older toolchains cannot parse the manifest.
+          FULL=false
+          REF="${{ github.ref }}"
+          EVENT="${{ github.event_name }}"
+          BASE_REF="${{ github.base_ref }}"
+
+          # Full matrix on main, on semver branches (v1.0.0, 1.2.3-alpha.1, etc.),
+          # and on PRs targeting either.
+          if [[ "$REF" == "refs/heads/main" ]]; then
+            FULL=true
+          elif [[ "$REF" =~ ^refs/heads/v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            FULL=true
+          elif [[ "$EVENT" == "pull_request" ]]; then
+            if [[ "$BASE_REF" == "main" || "$BASE_REF" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+              FULL=true
+            fi
+          fi
+
+          if [[ "$FULL" == "true" ]]; then
+            {
+              echo "full-matrix=true"
+              echo 'ubuntu-os=["noble"]'
+              echo 'ubuntu-swift=[{"version":"6.3"},{"version":"6.4.x","nightly":true}]'
+              echo 'ubuntu-type=["","wasm","wasm-embedded"]'
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "full-matrix=false"
+              echo 'ubuntu-os=["noble"]'
+              echo 'ubuntu-swift=[{"version":"6.3"}]'
+              echo 'ubuntu-type=[""]'
+            } >> "$GITHUB_OUTPUT"
+          fi
+          echo "Full matrix: $FULL (ref=$REF, event=$EVENT, base_ref=$BASE_REF)"
+
+  build-ubuntu:
+    name: Build on Ubuntu
+    needs: [configure]
+    runs-on: ubuntu-latest
+    container: ${{ matrix.swift.nightly && format('swiftlang/swift:nightly-{0}-{1}', matrix.swift.version, matrix.os) || format('swift:{0}-{1}', matrix.swift.version, matrix.os) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(needs.configure.outputs.ubuntu-os) }}
+        swift: ${{ fromJSON(needs.configure.outputs.ubuntu-swift) }}
+        type: ${{ fromJSON(needs.configure.outputs.ubuntu-type) }}
+        exclude:
+          # Nightly toolchains skip the wasm legs — nightly WASI SDKs may be unavailable.
+          - swift: { version: "6.4.x", nightly: true }
+            type: "wasm"
+          - swift: { version: "6.4.x", nightly: true }
+            type: "wasm-embedded"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: brightdigit/swift-build@v1
+        id: build
+        with:
+          type: ${{ matrix.type }}
+          wasmtime-version: "40.0.2"
+          wasm-swift-flags: >-
+            -Xcc -D_WASI_EMULATED_SIGNAL
+            -Xcc -D_WASI_EMULATED_MMAN
+            -Xlinker -lwasi-emulated-signal
+            -Xlinker -lwasi-emulated-mman
+      - name: Install curl
+        if: steps.build.outputs.contains-code-coverage == 'true'
+        run: |
+          apt-get update -q
+          apt-get install -y curl
+      - uses: sersoft-gmbh/swift-coverage-action@v5
+        id: coverage-files
+        if: steps.build.outputs.contains-code-coverage == 'true'
+        with:
+          fail-on-empty-output: true
+      - name: Upload coverage to Codecov
+        if: steps.build.outputs.contains-code-coverage == 'true'
+        uses: codecov/codecov-action@v6
+        with:
+          fail_ci_if_error: true
+          flags: swift-${{ matrix.swift.version }}-${{ matrix.os }}${{ matrix.swift.nightly && '-nightly' || '' }}
+          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ join(fromJSON(steps.coverage-files.outputs.files), ',') }}
+
+  build-windows:
+    name: Build on Windows
+    needs: [configure]
+    runs-on: windows-2025
+    if: ${{ needs.configure.outputs.full-matrix == 'true' && (github.event_name == 'pull_request' || !contains(github.event.head_commit.message, 'ci skip')) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: brightdigit/swift-build@v1
+        id: build
+        with:
+          windows-swift-version: swift-6.3-release
+          windows-swift-build: 6.3-RELEASE
+      - name: Upload coverage to Codecov
+        if: steps.build.outputs.contains-code-coverage == 'true'
+        uses: codecov/codecov-action@v6
+        with:
+          fail_ci_if_error: true
+          flags: swift-6.3,windows
+          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          os: windows
+          swift_project: DictionaryCoding
+
+  build-android:
+    name: Build on Android
+    needs: [configure]
+    runs-on: ubuntu-latest
+    if: ${{ needs.configure.outputs.full-matrix == 'true' && (github.event_name == 'pull_request' || !contains(github.event.head_commit.message, 'ci skip')) }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+      - uses: brightdigit/swift-build@v1
+        with:
+          type: android
+          android-swift-version: "6.3"
+          android-api-level: 34
+          android-run-tests: true
+      # Note: Code coverage is not supported on Android builds
+      # The Swift Android SDK does not include LLVM coverage tools (llvm-profdata, llvm-cov)
+
+  build-macos:
+    name: Build on macOS
+    needs: [configure]
+    runs-on: macos-26
+    if: ${{ !cancelled() && needs.configure.result == 'success' }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and Test
+        id: build
+        uses: brightdigit/swift-build@v1
+        with:
+          xcode: "/Applications/Xcode_26.5.app"
+      - name: Process Coverage
+        if: steps.build.outputs.contains-code-coverage == 'true'
+        uses: sersoft-gmbh/swift-coverage-action@v5
+      - name: Upload Coverage
+        if: steps.build.outputs.contains-code-coverage == 'true'
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: spm
+
+  build-macos-full:
+    name: Build on macOS (Full)
+    needs: [configure]
+    if: ${{ !cancelled() && needs.configure.result == 'success' && needs.configure.outputs.full-matrix == 'true' }}
+    runs-on: macos-26
+    strategy:
+      matrix:
+        include:
+          - type: macos
+            xcode: "/Applications/Xcode_26.5.app"
+          - type: ios
+            xcode: "/Applications/Xcode_26.5.app"
+            deviceName: "iPhone 17 Pro"
+            osVersion: "26.5"
+            download-platform: true
+          - type: watchos
+            xcode: "/Applications/Xcode_26.5.app"
+            deviceName: "Apple Watch Ultra 3 (49mm)"
+            osVersion: "26.5"
+            download-platform: true
+          - type: tvos
+            xcode: "/Applications/Xcode_26.5.app"
+            deviceName: "Apple TV"
+            osVersion: "26.5"
+            download-platform: true
+          - type: visionos
+            xcode: "/Applications/Xcode_26.5.app"
+            deviceName: "Apple Vision Pro"
+            osVersion: "26.5"
+            download-platform: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and Test
+        id: build
+        uses: brightdigit/swift-build@v1
+        with:
+          type: ${{ matrix.type }}
+          xcode: ${{ matrix.xcode }}
+          deviceName: ${{ matrix.deviceName }}
+          osVersion: ${{ matrix.osVersion }}
+          download-platform: ${{ matrix.download-platform }}
+      - name: Process Coverage
+        if: steps.build.outputs.contains-code-coverage == 'true'
+        uses: sersoft-gmbh/swift-coverage-action@v5
+      - name: Upload Coverage
+        if: steps.build.outputs.contains-code-coverage == 'true'
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: ${{ matrix.type && format('{0}{1}', matrix.type, matrix.osVersion) || 'spm' }}
+
+  lint:
+    name: Linting
+    # build-macos-full is skipped on feature branches; !failure() lets this job proceed
+    # past skipped (not failed) dependencies.
+    if: ${{ !cancelled() && !failure() && (github.event_name == 'pull_request' || !contains(github.event.head_commit.message, 'ci skip')) }}
+    runs-on: ubuntu-latest
+    needs: [build-ubuntu, build-macos, build-macos-full, build-windows, build-android]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: jdx/mise-action@v4
+        with:
+          cache: true
+      - name: Lint
+        run: ./Scripts/lint.sh
+        env:
+          LINT_MODE: STRICT
