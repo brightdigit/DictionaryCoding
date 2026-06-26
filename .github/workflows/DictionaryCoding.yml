@@ -63,7 +63,7 @@ jobs:
             {
               echo "full-matrix=true"
               echo 'ubuntu-os=["noble"]'
-              echo 'ubuntu-swift=[{"version":"6.3"},{"version":"6.4","nightly":true}]'
+              echo 'ubuntu-swift=[{"version":"6.3"},{"version":"6.4.x","nightly":true}]'
               echo 'ubuntu-type=["","wasm","wasm-embedded"]'
             } >> "$GITHUB_OUTPUT"
           else
@@ -89,9 +89,9 @@ jobs:
         type: ${{ fromJSON(needs.configure.outputs.ubuntu-type) }}
         exclude:
           # Nightly toolchains skip the wasm legs — nightly WASI SDKs may be unavailable.
-          - swift: { version: "6.4", nightly: true }
+          - swift: { version: "6.4.x", nightly: true }
             type: "wasm"
-          - swift: { version: "6.4", nightly: true }
+          - swift: { version: "6.4.x", nightly: true }
             type: "wasm-embedded"
     steps:
       - uses: actions/checkout@v6
