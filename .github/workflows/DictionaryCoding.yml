@@ -91,8 +91,7 @@ jobs:
         id: build
         uses: brightdigit/swift-build@v1
         with:
-          scheme: ${{ env.PACKAGE_NAME }}-Package
-          xcode: "/Applications/Xcode_26.4.app"
+          xcode: "/Applications/Xcode_26.5.app"
       - name: Process Coverage
         if: steps.build.outputs.contains-code-coverage == 'true'
         uses: sersoft-gmbh/swift-coverage-action@v5
@@ -112,26 +111,26 @@ jobs:
       matrix:
         include:
           - type: macos
-            xcode: "/Applications/Xcode_26.4.app"
+            xcode: "/Applications/Xcode_26.5.app"
           - type: ios
-            xcode: "/Applications/Xcode_26.4.app"
+            xcode: "/Applications/Xcode_26.5.app"
             deviceName: "iPhone 17 Pro"
-            osVersion: "26.4"
+            osVersion: "26.5"
             download-platform: true
           - type: watchos
-            xcode: "/Applications/Xcode_26.4.app"
+            xcode: "/Applications/Xcode_26.5.app"
             deviceName: "Apple Watch Ultra 3 (49mm)"
-            osVersion: "26.4"
+            osVersion: "26.5"
             download-platform: true
           - type: tvos
-            xcode: "/Applications/Xcode_26.4.app"
+            xcode: "/Applications/Xcode_26.5.app"
             deviceName: "Apple TV"
-            osVersion: "26.4"
+            osVersion: "26.5"
             download-platform: true
           - type: visionos
-            xcode: "/Applications/Xcode_26.4.app"
+            xcode: "/Applications/Xcode_26.5.app"
             deviceName: "Apple Vision Pro"
-            osVersion: "26.4"
+            osVersion: "26.5"
             download-platform: true
     steps:
       - uses: actions/checkout@v6
@@ -139,7 +138,6 @@ jobs:
         id: build
         uses: brightdigit/swift-build@v1
         with:
-          scheme: ${{ env.PACKAGE_NAME }}-Package
           type: ${{ matrix.type }}
           xcode: ${{ matrix.xcode }}
           deviceName: ${{ matrix.deviceName }}
