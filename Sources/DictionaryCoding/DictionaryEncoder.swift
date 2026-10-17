@@ -40,7 +40,17 @@ open class DictionaryEncoder {
   /// The strategy to use for encoding `Date` values.
   public enum DateEncodingStrategy {
     /// Defer to `Date` for choosing an encoding. This is the default strategy.
+    ///
+    /// `Date` encodes itself as a number: seconds since 00:00:00 UTC on
+    /// January 1, 2001 (`timeIntervalSinceReferenceDate`).
     case deferredToDate
+
+    /// Store the `Date` in the dictionary unchanged.
+    ///
+    /// Property lists, WatchConnectivity payloads, and `userInfo` dictionaries
+    /// accept `Date` values as-is, so the date doesn't need to become a number or a
+    /// string. Decode with ``DictionaryDecoder/DateDecodingStrategy/passthrough``.
+    case passthrough
 
     /// Encode the `Date` as a UNIX timestamp (as a Dictionary number).
     case secondsSince1970

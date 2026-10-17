@@ -40,7 +40,17 @@ open class DictionaryDecoder {
   /// The strategy to use for decoding `Date` values.
   public enum DateDecodingStrategy {
     /// Defer to `Date` for decoding. This is the default strategy.
+    ///
+    /// `Date` decodes itself from a number: seconds since 00:00:00 UTC on
+    /// January 1, 2001 (`timeIntervalSinceReferenceDate`).
     case deferredToDate
+
+    /// Decode the `Date` from a `Date` value stored in the dictionary unchanged.
+    ///
+    /// Use this for dictionaries that already hold `Date` values, such as property
+    /// lists and WatchConnectivity payloads, or that were encoded with
+    /// ``DictionaryEncoder/DateEncodingStrategy/passthrough``.
+    case passthrough
 
     /// Decode the `Date` as a UNIX timestamp from a Dictionary number.
     case secondsSince1970

@@ -59,6 +59,25 @@ decoder.keyDecodingStrategy = .convertFromSnakeCase
 decoder.missingValueDecodingStrategy = .useStandardDefault   // fall back to type defaults
 ```
 
+### Passing dates through unchanged
+
+Property lists and WatchConnectivity accept `Date` values as-is, so a date doesn't need to become a number or a string. The default `.deferredToDate` strategy encodes a `Date` as a number; `.passthrough` keeps it a `Date` on the way out and expects one on the way in:
+
+```swift
+// On the iPhone
+let encoder = DictionaryEncoder()
+encoder.dateEncodingStrategy = .passthrough
+let context: [String: Any] = try encoder.encode(ride)   // dates stay `Date`
+try WCSession.default.updateApplicationContext(context)
+
+// On the Apple Watch
+let decoder = DictionaryDecoder()
+decoder.dateDecodingStrategy = .passthrough
+let received = try decoder.decode(
+  Ride.self, from: WCSession.default.receivedApplicationContext
+)
+```
+
 ## Requirements
 
 - Swift 6.3+ / Xcode 26+

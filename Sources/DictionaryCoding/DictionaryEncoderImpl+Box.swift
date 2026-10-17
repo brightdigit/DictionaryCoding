@@ -100,10 +100,14 @@ extension DictionaryEncoderImpl {
     }
   }
 
+  // One branch per date strategy; the switch stays exhaustive rather than split.
+  // swiftlint:disable:next cyclomatic_complexity
   internal func box(_ date: Date) throws -> NSObject {
     switch self.options.dateEncodingStrategy {
     case .deferredToDate:
       return try boxDateDeferred(date)
+    case .passthrough:
+      return boxDatePassthrough(date)
     case .secondsSince1970:
       return NSNumber(value: date.timeIntervalSince1970)
     case .millisecondsSince1970:
@@ -123,6 +127,13 @@ extension DictionaryEncoderImpl {
     // container, so no need to catch the error.
     try date.encode(to: self)
     return self.storage.popContainer()
+  }
+
+  private func boxDatePassthrough(_ date: Date) -> NSObject {
+    let interval = date.timeIntervalSinceReferenceDate
+    // Darwin's tagged-pointer NSDate stores -0.0 as a date about 15 microseconds
+    // earlier, so store +0.0 instead, which is the same Date.
+    return NSDate(timeIntervalSinceReferenceDate: interval == 0 ? 0 : interval)
   }
 
   private func boxDateISO8601(_ date: Date) -> NSObject {

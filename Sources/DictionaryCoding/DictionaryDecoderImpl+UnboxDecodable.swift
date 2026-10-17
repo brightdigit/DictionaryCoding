@@ -38,10 +38,14 @@ extension DictionaryDecoderImpl {
     return try unboxDate(value)
   }
 
+  // One branch per date strategy; the switch stays exhaustive rather than split.
+  // swiftlint:disable:next cyclomatic_complexity
   private func unboxDate(_ value: Any) throws -> Date? {
     switch self.options.dateDecodingStrategy {
     case .deferredToDate:
       return try unboxDateDeferred(value)
+    case .passthrough:
+      return try unboxDatePassthrough(value)
     case .secondsSince1970:
       return try unboxDateTimestamp(value, factor: 1.0)
     case .millisecondsSince1970:
@@ -59,6 +63,15 @@ extension DictionaryDecoderImpl {
     self.storage.push(container: value)
     defer { self.storage.popContainer() }
     return try Date(from: self)
+  }
+
+  private func unboxDatePassthrough(_ value: Any) throws -> Date {
+    guard let date = value as? Date else {
+      throw DecodingError.typeMismatch(
+        at: self.codingPath, expectation: Date.self, reality: value
+      )
+    }
+    return date
   }
 
   private func unboxDateTimestamp(_ value: Any, factor: Double) throws -> Date? {
